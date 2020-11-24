@@ -104,27 +104,37 @@ export class Connector implements DataConnector{
       params.Limit = args.take
     }
 
-    return new Promise(
+    return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
       (res, rej) => {
-        const result = (err, data) => {
-          if (err) {
-            return rej(err)
-          }
-          if (args.count) {
-            return res(data.Count)
-          }
-          res(data.Items)
-        }
         if (isQuery) {
-          return this.connection.query(
+          this.connection.query(
             params,
-            result
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        } else {
+          this.connection.scan(
+            params,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
           )
         }
-        this.connection.scan(
-          params,
-          result
-        )
+        
+      }
+    ).then(
+      (data) => {
+        if ((args as ICreateArgs | IQueryArgs | IUpdateArgs).count) {
+          return data.Count || 0
+        }
+        return data.Items || []
       }
     )
   }
