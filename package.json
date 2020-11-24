@@ -1,0 +1,49 @@
+{
+  "name": "@funfunz/dynamodb-data-connector",
+  "version": "0.0.0",
+  "description": "dynamodb data connector for Funfunz",
+  "main": "lib/index.js",
+  "scripts": {
+    "jest": "jest --coverage",
+    "test": "npm run jest",
+    "lint": "eslint src",
+    "clean": "rm -rf lib && mkdir lib",
+    "build": "npm run lint && npm run clean && tsc --project tsconfig.build.json",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Funfunz/dynamodb-data-connector.git"
+  },
+  "keywords": [
+    "dynamodb",
+    "data",
+    "connector",
+    "funfunz"
+  ],
+  "author": "João Moura <joao87moura@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Funfunz/dynamodb-data-connector/issues"
+  },
+  "homepage": "https://github.com/Funfunz/dynamodb-data-connector#readme",
+  "devDependencies": {
+    "@babel/core": "^7.12.3",
+    "@babel/preset-env": "^7.12.1",
+    "@babel/preset-typescript": "^7.12.1",
+    "@funfunz/core": "^0.7.0",
+    "@types/jest": "^26.0.15",
+    "@typescript-eslint/eslint-plugin": "^4.7.0",
+    "@typescript-eslint/parser": "^4.7.0",
+    "eslint": "^7.13.0",
+    "jest": "^26.6.3",
+    "typescript": "^4.0.5"
+  },
+  "dependencies": {
+    "debug": "^4.2.0",
+    "aws-sdk": "^2.796.0"
+  },
+  "peerDependencies": {
+    "@funfunz/core": "^0.7.0"
+  }
+}
