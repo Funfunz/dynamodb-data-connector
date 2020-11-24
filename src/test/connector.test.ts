@@ -8,7 +8,6 @@ jest.mock('@funfunz/core', () => {
     Funfunz: function ({config: configData, settings: settingsData}) {
       return {
         config: () => {
-          console.log(configData, settingsData)
           return {
             config: configData,
             settings: settingsData
@@ -30,18 +29,26 @@ const connector = new Connector(
   } as IFunfunzConfig)
 )
 
-let familyTestName = 'TestFamily'
+let ids: string[] = []
+const userFields  = [
+  'userId',
+  'name',
+  'createdAt',
+  'updatedAt',
+]
 let familyUpdatedTestName = 'UpdatedTestFamily'
 let createdId: number
 
 describe('DynamoDB Data Connector', () => {
   it('Should return a list of results', (done) => {
     const fields  = [
-      'id',
-      'Image'
+      'userId',
+      'name',
+      'createdAt',
+      'updatedAt',
     ]
     return connector.query({
-      entityName: 'jaegerTable',
+      entityName: 'funfunzUsers',
       fields,
       skip: 0,
       take: 2,
@@ -54,22 +61,23 @@ describe('DynamoDB Data Connector', () => {
             return fields.includes(key)
           }
         ).length).toBe(fields.length)
+        typedResult.forEach(
+          (result) => {
+            ids.push(result.userId as string)
+          }
+        )
         return done()
       }
     )
   })
 
   it('Should return a list of results _eq filter', (done) => {
-    const fields  = [
-      'id',
-      'Image'
-    ]
     return connector.query({
-      entityName: 'jaegerTable',
-      fields,
+      entityName: 'funfunzUsers',
+      fields: userFields,
       filter: {
-        id: {
-          _eq: 3
+        userId: {
+          _eq: ids[0]
         }
       },
       skip: 0,
@@ -80,37 +88,55 @@ describe('DynamoDB Data Connector', () => {
         expect(typedResult.length).toBe(1)
         expect(Object.keys(typedResult[0]).filter(
           key => {
-            return fields.includes(key)
+            return userFields.includes(key)
           }
-        ).length).toBe(fields.length)
+        ).length).toBe(userFields.length)
         return done()
       }
     )
   })
 
   it('Should return a list of results _in filter', (done) => {
-    const fields  = [
-      'id',
-      'Image'
-    ]
     return connector.query({
-      entityName: 'jaegerTable',
-      fields,
+      entityName: 'funfunzUsers',
+      fields: userFields,
       filter: {
-        id: {
-          _in: [3, 7]
+        userId: {
+          _in: [...ids]
         }
       },
     }).then(
       (result) => {
         const typedResult = result as Record<string, unknown>[]
-        console.log(typedResult)
         expect(typedResult.length).toBe(2)
         expect(Object.keys(typedResult[0]).filter(
           key => {
-            return fields.includes(key)
+            return userFields.includes(key)
           }
-        ).length).toBe(fields.length)
+        ).length).toBe(userFields.length)
+        return done()
+      }
+    )
+  })
+
+  it('Should return a list of results using a full table scan', (done) => {
+    return connector.query({
+      entityName: 'funfunzUsers',
+      fields: userFields,
+      filter: {
+        name: {
+          _eq: 'jejay'
+        }
+      },
+    }).then(
+      (result) => {
+        const typedResult = result as Record<string, unknown>[]
+        expect(typedResult.length).toBe(1)
+        expect(Object.keys(typedResult[0]).filter(
+          key => {
+            return userFields.includes(key)
+          }
+        ).length).toBe(userFields.length)
         return done()
       }
     )

@@ -1,7 +1,9 @@
-import familiesModel from './models/families'
-import productsModel from './models/products'
+import { model as usersModel } from './models/users'
+import { model as rolesModel } from './models/roles'
+import { model as usersRolesModel } from './models/usersRoles'
 
 export default [
-  familiesModel,
-  productsModel,
+  usersModel,
+  rolesModel,
+  usersRolesModel
 ]
