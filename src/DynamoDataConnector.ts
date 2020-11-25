@@ -55,26 +55,7 @@ export class Connector implements DataConnector{
     this.connection = new DynamoDB.DocumentClient()
   }
 
-  private buildFieldsAttributes(fields: string[]): {
-    ExpressionAttributeNames: ExpressionAttributeNameMap
-    ProjectionExpression: string[]
-  } {
-    const ExpressionAttributeNames: ExpressionAttributeNameMap = {}
-    const ProjectionExpression: string[] = []
-    fields.forEach(
-      (field) => {
-        const newFieldId = `#${field}`
-        ExpressionAttributeNames[newFieldId] = field
-        ProjectionExpression.push(newFieldId)
-      }
-    )
-    return {
-      ExpressionAttributeNames,
-      ProjectionExpression
-    }
-  }
-
-  public query(args: IQueryArgs): Promise<Record<string, unknown>[] | number> {
+  public async query(args: IQueryArgs): Promise<Record<string, unknown>[] | number> {
     
     const pks = getPKs(args.entityName, this.funfunz.config().settings)
 
@@ -106,9 +87,10 @@ export class Connector implements DataConnector{
         params.FilterExpression = filterExpressions.filterExpression
       }
     } 
-    
-    if (args.skip || args.take) {
-      params.Limit = args.take
+
+    if (args.skip && pks) {
+      params.ExclusiveStartKey = await this.skipEntries(params, args.skip, pks, isQuery)
+      console.log(JSON.stringify(params, null, 2))
     }
 
     return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
@@ -141,7 +123,14 @@ export class Connector implements DataConnector{
         if ((args as ICreateArgs | IQueryArgs | IUpdateArgs).count) {
           return data.Count || 0
         }
-        return data.Items || []
+        if (args.take) {
+          params.Limit = args.take
+        }
+        return (
+          args.take
+            ? data.Items?.slice(0, args.take)
+            : data.Items
+        ) || []
       }
     )
   }
@@ -208,7 +197,105 @@ export class Connector implements DataConnector{
     )
   }
 
-  private isQuery(pks: string[] | undefined, filters: IFilter) {
+  private skipEntriesRequest(
+    params: DynamoDB.DocumentClient.ScanInput | DynamoDB.DocumentClient.QueryInput,
+    skipTo: number,
+    pks: string[],
+    isQuery: boolean,
+    skipped: number
+  ): Promise<DynamoDB.DocumentClient.Key | undefined> {
+    return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
+      (res, rej) => {
+        if (isQuery) {
+          this.connection.query(
+            params,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        } else {
+          this.connection.scan(
+            params,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        }
+        
+      }
+    ).then(
+      (data) => {
+        if (!data.Items) {
+          return
+        }
+        const ExclusiveStartKey: DynamoDB.DocumentClient.Key = {}
+        const allSkipped = data.Items.some(
+          (item) => {
+            skipped += 1
+            if (skipped >= skipTo) {
+              pks.forEach(
+                (pk) => {
+                  ExclusiveStartKey[pk] = item[pk]
+                }
+              )
+              return true
+            }
+          }
+        )
+        
+        return allSkipped
+          ? ExclusiveStartKey
+          : this.skipEntriesRequest(params, skipTo, pks, isQuery, skipped)
+      }
+    )
+  }
+
+  private skipEntries(
+    params: DynamoDB.DocumentClient.ScanInput | DynamoDB.DocumentClient.QueryInput,
+    skipTo: number,
+    pks: string[],
+    isQuery: boolean
+  ): Promise<DynamoDB.DocumentClient.Key | undefined> {
+    const newFields = this.buildFieldsAttributes(pks)
+    const newParams = {
+      ...params,
+      ExpressionAttributeNames: {
+        ...params.ExpressionAttributeNames,
+        ...newFields.ExpressionAttributeNames
+      },
+      ProjectionExpression: newFields.ProjectionExpression.join(', '),
+      Limit: 1000
+    }
+    return this.skipEntriesRequest(newParams, skipTo, pks, isQuery, 0)
+    
+  }
+
+  private buildFieldsAttributes(fields: string[]): {
+    ExpressionAttributeNames: ExpressionAttributeNameMap
+    ProjectionExpression: string[]
+  } {
+    const ExpressionAttributeNames: ExpressionAttributeNameMap = {}
+    const ProjectionExpression: string[] = []
+    fields.forEach(
+      (field) => {
+        const newFieldId = `#${field}`
+        ExpressionAttributeNames[newFieldId] = field
+        ProjectionExpression.push(newFieldId)
+      }
+    )
+    return {
+      ExpressionAttributeNames,
+      ProjectionExpression
+    }
+  }
+
+  private isQuery(pks: string[] | undefined, filters: IFilter): boolean {
     return !pks || !Object.keys(filters).some(
       (key) => {
         if (key === '_and' || key === '_or') {

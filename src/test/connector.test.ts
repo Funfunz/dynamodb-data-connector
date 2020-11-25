@@ -189,4 +189,28 @@ describe('DynamoDB Data Connector', () => {
       }
     )
   })
+
+  it('Should respect skip and take arguments', (done) => {
+    return connector.query({
+      entityName: 'funfunzUsers',
+      fields: ['userId', 'name'],
+      filter: {
+        name: {
+          _in: [
+            'bea',
+            'jejay',
+            'leite',
+            'miriamm'
+          ]
+        }
+      },
+      skip: 2,
+      take: 2
+    }).then(
+      (result) => {
+        console.log(result)
+        return done()
+      }
+    )
+  })
 })
