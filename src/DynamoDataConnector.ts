@@ -4,24 +4,28 @@ import { DynamoDB } from 'aws-sdk'
 import type { ICreateArgs, IQueryArgs, IRemoveArgs, IUpdateArgs, DataConnector, IDataConnector } from '@funfunz/core/lib/types/connector'
 import type { FilterValues, IFilter, OperatorsType } from '@funfunz/core/lib/middleware/utils/filter'
 import type { ExpressionAttributeNameMap } from 'aws-sdk/clients/dynamodb'
-import type { IEntityInfo, ISettings } from '@funfunz/core/lib/generator/configurationTypes'
+import type { ISettings } from '@funfunz/core/lib/generator/configurationTypes'
 
 const debug = Debug('funfunz:DynamoDBDataConnector')
 
 debug('Hello')
 
-function getPKs(TABLE_CONFIG: IEntityInfo) {
-  return TABLE_CONFIG.properties.filter(
-    (entity) => entity.model.isPk
-  ).map(
-    (property) => property.name
+function getPKs(entity: string, settings: ISettings): string[] | undefined {
+  let pks: string[] | undefined
+  settings.some(
+    (settingsEntity) => {
+      const found = settingsEntity.name === entity
+      if (found) {
+        pks = settingsEntity.properties.filter(
+          (property) => property.model.isPk
+        ).map(
+          (property) => property.name
+        )
+      }
+      return found
+    }
   )
-}
-
-function getTableConfig(entity: string, settings: ISettings) {
-  return settings.filter(
-    (tableItem) => tableItem.name === entity
-  )[0]
+  return pks
 }
 
 export class Connector implements DataConnector{
@@ -51,54 +55,57 @@ export class Connector implements DataConnector{
     this.connection = new DynamoDB.DocumentClient()
   }
 
-  public query(args: IQueryArgs): Promise<Record<string, unknown>[] | number> {
-    
-    const tableConfig = getTableConfig(args.entityName, this.funfunz.config().settings)
-    const pks = getPKs(tableConfig)
-
+  private buildFieldsAttributes(fields: string[]): {
+    ExpressionAttributeNames: ExpressionAttributeNameMap
+    ProjectionExpression: string[]
+  } {
     const ExpressionAttributeNames: ExpressionAttributeNameMap = {}
     const ProjectionExpression: string[] = []
-    args.fields.forEach(
+    fields.forEach(
       (field) => {
         const newFieldId = `#${field}`
         ExpressionAttributeNames[newFieldId] = field
         ProjectionExpression.push(newFieldId)
       }
     )
+    return {
+      ExpressionAttributeNames,
+      ProjectionExpression
+    }
+  }
+
+  public query(args: IQueryArgs): Promise<Record<string, unknown>[] | number> {
+    
+    const pks = getPKs(args.entityName, this.funfunz.config().settings)
+
+    const {
+      ExpressionAttributeNames,
+      ProjectionExpression
+    } = this.buildFieldsAttributes(args.fields)
+    
+    const params: DynamoDB.DocumentClient.ScanInput | DynamoDB.DocumentClient.QueryInput = {
+      TableName : args.entityName,
+      ExpressionAttributeNames,
+      ProjectionExpression: ProjectionExpression.join(', '),
+    }
 
     let isQuery = false
 
-    let filterExpressions: {
-      filterExpression?: string,
-      expressionAttributeValues?: DynamoDB.DocumentClient.ExpressionAttributeValueMap,
-      expressionAttributeNames?: DynamoDB.DocumentClient.ExpressionAttributeNameMap,
-    } = {
-      filterExpression: undefined,
-      expressionAttributeValues: undefined,
-      expressionAttributeNames: undefined
-    }
-
     if (args.filter) {
       isQuery = this.isQuery(pks, args.filter)
-      filterExpressions = this.buildScanExpressions(args.filter)
-    }
-
-    const params: DynamoDB.DocumentClient.ScanInput | DynamoDB.DocumentClient.QueryInput = {
-      TableName : args.entityName,
-      ExpressionAttributeNames: {
-        ...ExpressionAttributeNames,
-        ...filterExpressions.expressionAttributeNames,
-      },
-      ProjectionExpression: ProjectionExpression.join(', '),
-      ExpressionAttributeValues: filterExpressions.expressionAttributeValues,
-    }
-
-    if (isQuery) {
-      (params as DynamoDB.DocumentClient.QueryInput).KeyConditionExpression = filterExpressions.filterExpression
-    } else {
-      params.FilterExpression = filterExpressions.filterExpression
-    }
-    
+      const filterExpressions = this.buildFilterExpressions(args.filter)
+      params.ExpressionAttributeNames = {
+        ...params.ExpressionAttributeNames,
+        ...filterExpressions.expressionAttributeNameMap,
+      }
+      params.ExpressionAttributeValues = filterExpressions.expressionAttributeValues
+      
+      if (isQuery) {
+        (params as DynamoDB.DocumentClient.QueryInput).KeyConditionExpression = filterExpressions.filterExpression
+      } else {
+        params.FilterExpression = filterExpressions.filterExpression
+      }
+    } 
     
     if (args.skip || args.take) {
       params.Limit = args.take
@@ -150,12 +157,59 @@ export class Connector implements DataConnector{
   }
 
   public remove(args: IRemoveArgs): Promise<number> {
-    console.log(args)
-    return Promise.resolve(0)
+    const deletePromise = (params: DynamoDB.DocumentClient.DeleteItemInput): Promise<DynamoDB.DocumentClient.DeleteItemOutput> => {
+      return new Promise(
+        (res, rej) => {
+          this.connection.delete(
+            params,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        }
+      )
+    }
+    const pks = getPKs(args.entityName, this.funfunz.config().settings)
+    if (!pks) {
+      return Promise.resolve(0)
+    }
+    const queryArgs: IQueryArgs = {
+      ...args,
+      fields: pks
+    }
+    return this.query(queryArgs).then(
+      (data) => {
+        const itemsToDelete: DynamoDB.DocumentClient.DeleteItemInput['Key'][] = []
+
+        ;(data as Record<string, unknown>[]).forEach(
+          (entry) => {
+            const itemToDelete = {}
+            pks.forEach(
+              (pk) => {
+                itemToDelete[pk] = entry[pk]
+              }
+            )
+            const params: DynamoDB.DocumentClient.DeleteItemInput = {
+              TableName : args.entityName,
+              Key: itemToDelete
+            }
+            itemsToDelete.push(deletePromise(params))
+          }
+        )
+        return Promise.all(itemsToDelete)
+      }
+    ).then(
+      (deleted) => {
+        return deleted.length
+      }
+    )
   }
 
-  private isQuery(pks: string[], filters: IFilter) {
-    return !Object.keys(filters).some(
+  private isQuery(pks: string[] | undefined, filters: IFilter) {
+    return !pks || !Object.keys(filters).some(
       (key) => {
         if (key === '_and' || key === '_or') {
           
@@ -176,7 +230,7 @@ export class Connector implements DataConnector{
     
   }
 
-  private buildScanExpressions(
+  private buildFilterExpressions(
     filters: IFilter,
     unionOperator = 'AND',
     parentIndex = 0,
@@ -196,7 +250,7 @@ export class Connector implements DataConnector{
   
           innerFilters.forEach(
             (innerfilter, innerIndex) => {
-              const innerGetExpression = this.buildScanExpressions(innerfilter, key === '_and' ? 'AND' : 'OR', innerIndex + index + parentIndex)
+              const innerGetExpression = this.buildFilterExpressions(innerfilter, key === '_and' ? 'AND' : 'OR', innerIndex + index + parentIndex)
               filterExpression.push(`(${innerGetExpression.filterExpression})`)
               expressionAttributeNameMap = {
                 ...expressionAttributeNameMap,

@@ -141,4 +141,52 @@ describe('DynamoDB Data Connector', () => {
       }
     )
   })
+
+  it('Should delete an item by primary key', (done) => {
+    return connector.remove({
+      entityName: 'funfunzUsers',
+      filter: {
+        userId: {
+          _eq: '77554e6e-cc19-4d04-87af-1efb266e55cd'
+        }
+      },
+    }).then(
+      (result) => {
+        expect(result).toBe(1)
+        return done()
+      }
+    )
+  })
+
+  it('Should return 0 if item is not found', (done) => {
+    return connector.remove({
+      entityName: 'funfunzUsers',
+      filter: {
+        name: {
+          _eq: 'somethingThatDoesn\'tExist'
+        }
+      },
+    }).then(
+      (result) => {
+        expect(result).toBe(0)
+        return done()
+      }
+    )
+  })
+
+  it('Should delete all items that match a filter', (done) => {
+    return connector.remove({
+      entityName: 'funfunzUsers',
+      filter: {
+        name: {
+          _eq: 'test'
+        }
+      },
+    }).then(
+      (result) => {
+        expect(result).toBe(0)
+        return done()
+      }
+    )
+  })
 })
