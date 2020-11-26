@@ -97,6 +97,7 @@ describe('DynamoDB Data Connector', () => {
   })
 
   it('Should return a list of results _in filter', (done) => {
+    console.log('ids', ids)
     return connector.query({
       entityName: 'funfunzUsers',
       fields: userFields,

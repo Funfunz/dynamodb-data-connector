@@ -38,7 +38,7 @@ export class Connector implements DataConnector{
     _lte: '<=',
     _gt: '>',
     _gte: '>=',
-    _in: 'IN',
+    take: 'IN',
     _like: 'contains',    
   }
   private allowedQueryOperators = [
@@ -90,47 +90,15 @@ export class Connector implements DataConnector{
 
     if (args.skip && pks) {
       params.ExclusiveStartKey = await this.skipEntries(params, args.skip, pks, isQuery)
-      console.log(JSON.stringify(params, null, 2))
     }
 
-    return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
-      (res, rej) => {
-        if (isQuery) {
-          this.connection.query(
-            params,
-            (err, data) => {
-              if (err) {
-                return rej(err)
-              }
-              res(data)
-            }
-          )
-        } else {
-          this.connection.scan(
-            params,
-            (err, data) => {
-              if (err) {
-                return rej(err)
-              }
-              res(data)
-            }
-          )
-        }
-        
-      }
-    ).then(
+    return this.takeEntriesRequest(params, args.take || 0, isQuery, []).then(
       (data) => {
+        console.log('data', data)
         if ((args as ICreateArgs | IQueryArgs | IUpdateArgs).count) {
-          return data.Count || 0
+          return data.length
         }
-        if (args.take) {
-          params.Limit = args.take
-        }
-        return (
-          args.take
-            ? data.Items?.slice(0, args.take)
-            : data.Items
-        ) || []
+        return data
       }
     )
   }
@@ -193,6 +161,72 @@ export class Connector implements DataConnector{
     ).then(
       (deleted) => {
         return deleted.length
+      }
+    )
+  }
+
+  private takeEntriesRequest(
+    params: DynamoDB.DocumentClient.ScanInput | DynamoDB.DocumentClient.QueryInput,
+    take: number,
+    isQuery: boolean,
+    taken: DynamoDB.DocumentClient.ItemList = []
+  ): Promise<DynamoDB.DocumentClient.ItemList> {
+    const newParams = {
+      ...params,
+    }
+
+    if (take !== 0) {
+      newParams.Limit = 1000
+    }
+
+    console.log('params', params)
+
+    return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
+      (res, rej) => {
+        if (isQuery) {
+          this.connection.query(
+            newParams,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        } else {
+          this.connection.scan(
+            newParams,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        }
+        
+      }
+    ).then(
+      (data) => {
+        console.log('data.Items', data.Items)
+        if (take === 0) {
+          return data.Items || []
+        }
+        if (data.Items) {
+          taken = [
+            ...taken,
+            ...data.Items.slice(0, take - taken.length)
+          ]
+        }
+
+        if (taken.length >= take) {
+          return taken
+        }
+
+        if (data.LastEvaluatedKey) {
+          return this.takeEntriesRequest(params, take, isQuery, taken)
+        }
+        return taken
       }
     )
   }
@@ -369,7 +403,6 @@ export class Connector implements DataConnector{
                 return newId
               }
             )
-            
             filterExpression.push(`(${attributeName} IN (${inValues.join(', ')}))`)
             break
           }
