@@ -38,6 +38,7 @@ const userFields  = [
   'updatedAt',
 ]
 let createdUserId = v4()
+let updatedAt = ''
 
 describe('DynamoDB Data Connector', () => {
   it('Should return a list of results', (done) => {
@@ -71,6 +72,28 @@ describe('DynamoDB Data Connector', () => {
     )
   })
 
+  it('Should return a quantity of results', (done) => {
+    const fields  = [
+      'userId',
+      'name',
+      'createdAt',
+      'updatedAt',
+    ]
+    return connector.query({
+      entityName: 'funfunzUsers',
+      fields,
+      skip: 0,
+      take: 2,
+      count: true,
+    }).then(
+      (result) => {
+        const typedResult = result as number
+        expect(typedResult).toBe(2)
+        return done()
+      }
+    )
+  })
+
   it('Should return a list of results _eq filter', (done) => {
     return connector.query({
       entityName: 'funfunzUsers',
@@ -97,7 +120,6 @@ describe('DynamoDB Data Connector', () => {
   })
 
   it('Should return a list of results _in filter', (done) => {
-    console.log('ids', ids)
     return connector.query({
       entityName: 'funfunzUsers',
       fields: userFields,
@@ -156,6 +178,55 @@ describe('DynamoDB Data Connector', () => {
     }).then(
       (result) => {
         expect(result).toMatchObject(newUserEntry)
+        return done()
+      }
+    )
+  })
+
+  it('Should update an entry', (done) => {
+    updatedAt = new Date().toISOString()
+    const updatedUserData = {
+      name: v4(),
+      createdAt: '2020-11-24T21:21:09.982Z',
+      updatedAt,
+    }
+    return connector.update({
+      entityName: 'funfunzUsers',
+      filter: {
+        userId: {
+          _eq: createdUserId
+        }
+      },
+      data: updatedUserData
+    }).then(
+      (result) => {
+        expect(Array.isArray(result)).toBeTruthy()
+        expect(result[0].userId).toBe(createdUserId)
+        expect(result[0].updatedAt).toBe(updatedAt)
+        return done()
+      }
+    )
+  })
+
+  it('Should update an entry and return the quantity of updated entries', (done) => {
+    updatedAt = new Date().toISOString()
+    const updatedUserData = {
+      name: v4(),
+      createdAt: '2020-11-24T21:21:09.982Z',
+      updatedAt: new Date().toISOString(),
+    }
+    return connector.update({
+      entityName: 'funfunzUsers',
+      count: true,
+      filter: {
+        userId: {
+          _eq: createdUserId
+        }
+      },
+      data: updatedUserData
+    }).then(
+      (result) => {
+        expect(result).toBe(1)
         return done()
       }
     )

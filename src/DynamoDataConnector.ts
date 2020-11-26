@@ -79,9 +79,69 @@ export class Connector implements DataConnector{
     return data
   }
 
-  public update(args: IUpdateArgs): Promise<Record<string, unknown>[] | number> {
-    console.log(args)
-    return Promise.resolve(0)
+  public async update(args: IUpdateArgs): Promise<Record<string, unknown>[] | number> {
+    const pks = getPKs(args.entityName, this.funfunz.config().settings) || []
+    const queryArgs: IQueryArgs = {
+      entityName: args.entityName,
+      count: false,
+      fields: pks,
+      filter: args.filter,
+      skip: args.skip,
+      take: args.take,
+    }
+    const foundItems = await this.query(queryArgs) as Record<string, unknown>[]
+    const updatePromises = foundItems.map(
+      (item) => {
+        const Key: DynamoDB.DocumentClient.Key = {}
+
+        pks.forEach(
+          (pk) => {
+            Key[pk] = item[pk]
+          }
+        )
+
+        const UpdateExpression: string[] = []
+        const ExpressionAttributeNames: DynamoDB.DocumentClient.ExpressionAttributeNameMap = {}
+        const ExpressionAttributeValues: DynamoDB.DocumentClient.ExpressionAttributeValueMap = {}
+
+        Object.entries(args.data).forEach(
+          ([key, value]) => {
+            ExpressionAttributeNames[`#${key}`] = key
+            ExpressionAttributeValues[`:${key}`] = value
+            UpdateExpression.push(`#${key} = :${key}`)
+          }, {})
+
+        const params: DynamoDB.DocumentClient.UpdateItemInput = {
+          TableName: args.entityName,
+          ReturnValues: 'ALL_NEW',
+          Key,
+          UpdateExpression: `set ${UpdateExpression.join(', ')}`,
+          ExpressionAttributeNames,
+          ExpressionAttributeValues
+        }
+        return new Promise<DynamoDB.DocumentClient.AttributeMap>(
+          (res, rej) => {
+            this.connection.update(
+              params,
+              (err, data) => {
+                if (err) {
+                  return rej(err)
+                }
+                res(data.Attributes)
+              }
+            )
+          }
+        )
+      }
+    )
+    return Promise.all(updatePromises).then(
+      (results) => {
+        if (args.count) {
+          return results.length
+        }
+        return results
+      }
+    )
   }
 
   public create(args: ICreateArgs): Promise<Record<string, unknown>[] | Record<string, unknown> | number> {
@@ -89,15 +149,12 @@ export class Connector implements DataConnector{
       TableName: args.entityName,
       Item: args.data
     }
-
-    console.log(JSON.stringify(params, null, 2))
     
     return new Promise(
       (res, rej) => {
         this.connection.put(
           params,
-          (err, data) => {
-            console.log('err data', err, data)
+          (err) => {
             if (err) {
               return rej(err)
             }
