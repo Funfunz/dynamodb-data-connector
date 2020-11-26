@@ -2,6 +2,7 @@ import { Connector } from '../index'
 import config from './configs/MCconfig'
 import settings from './configs/MCsettings'
 import { Funfunz, IFunfunzConfig } from '@funfunz/core'
+import { v4 } from 'uuid'
 
 jest.mock('@funfunz/core', () => {
   return {
@@ -36,8 +37,7 @@ const userFields  = [
   'createdAt',
   'updatedAt',
 ]
-let familyUpdatedTestName = 'UpdatedTestFamily'
-let createdId: number
+let createdUserId = v4()
 
 describe('DynamoDB Data Connector', () => {
   it('Should return a list of results', (done) => {
@@ -143,12 +143,30 @@ describe('DynamoDB Data Connector', () => {
     )
   })
 
+  it('Should create a new entry', (done) => {
+    const newUserEntry = {
+      userId: createdUserId,
+      name: v4(),
+      createdAt: '2020-11-24T21:21:09.982Z',
+      updatedAt: '2020-11-24T21:21:09.982Z',
+    }
+    return connector.create({
+      entityName: 'funfunzUsers',
+      data: newUserEntry
+    }).then(
+      (result) => {
+        expect(result).toMatchObject(newUserEntry)
+        return done()
+      }
+    )
+  })
+
   it('Should delete an item by primary key', (done) => {
     return connector.remove({
       entityName: 'funfunzUsers',
       filter: {
         userId: {
-          _eq: '77554e6e-cc19-4d04-87af-1efb266e55cd'
+          _eq: createdUserId
         }
       },
     }).then(
@@ -209,7 +227,8 @@ describe('DynamoDB Data Connector', () => {
       take: 2
     }).then(
       (result) => {
-        console.log(result)
+        const typedResult = result as Record<string, unknown>[]
+        expect(typedResult.length).toBe(2)
         return done()
       }
     )

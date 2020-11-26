@@ -4,29 +4,10 @@ import { DynamoDB } from 'aws-sdk'
 import type { ICreateArgs, IQueryArgs, IRemoveArgs, IUpdateArgs, DataConnector, IDataConnector } from '@funfunz/core/lib/types/connector'
 import type { FilterValues, IFilter, OperatorsType } from '@funfunz/core/lib/middleware/utils/filter'
 import type { ExpressionAttributeNameMap } from 'aws-sdk/clients/dynamodb'
-import type { ISettings } from '@funfunz/core/lib/generator/configurationTypes'
+import { getPKs } from './helpers'
 
 const debug = Debug('funfunz:DynamoDBDataConnector')
-
 debug('Hello')
-
-function getPKs(entity: string, settings: ISettings): string[] | undefined {
-  let pks: string[] | undefined
-  settings.some(
-    (settingsEntity) => {
-      const found = settingsEntity.name === entity
-      if (found) {
-        pks = settingsEntity.properties.filter(
-          (property) => property.model.isPk
-        ).map(
-          (property) => property.name
-        )
-      }
-      return found
-    }
-  )
-  return pks
-}
 
 export class Connector implements DataConnector{
   public connection: DynamoDB.DocumentClient
@@ -38,7 +19,6 @@ export class Connector implements DataConnector{
     _lte: '<=',
     _gt: '>',
     _gte: '>=',
-    take: 'IN',
     _like: 'contains',    
   }
   private allowedQueryOperators = [
@@ -56,7 +36,6 @@ export class Connector implements DataConnector{
   }
 
   public async query(args: IQueryArgs): Promise<Record<string, unknown>[] | number> {
-    
     const pks = getPKs(args.entityName, this.funfunz.config().settings)
 
     const {
@@ -92,15 +71,12 @@ export class Connector implements DataConnector{
       params.ExclusiveStartKey = await this.skipEntries(params, args.skip, pks, isQuery)
     }
 
-    return this.takeEntriesRequest(params, args.take || 0, isQuery, []).then(
-      (data) => {
-        console.log('data', data)
-        if ((args as ICreateArgs | IQueryArgs | IUpdateArgs).count) {
-          return data.length
-        }
-        return data
-      }
-    )
+    const data = await this.takeEntriesRequest(params, args.take || 0, isQuery, [])
+    
+    if ((args as ICreateArgs | IQueryArgs | IUpdateArgs).count) {
+      return data.length
+    }
+    return data
   }
 
   public update(args: IUpdateArgs): Promise<Record<string, unknown>[] | number> {
@@ -109,8 +85,27 @@ export class Connector implements DataConnector{
   }
 
   public create(args: ICreateArgs): Promise<Record<string, unknown>[] | Record<string, unknown> | number> {
-    console.log(args)
-    return Promise.resolve(0)
+    const params: DynamoDB.DocumentClient.PutItemInput = {
+      TableName: args.entityName,
+      Item: args.data
+    }
+
+    console.log(JSON.stringify(params, null, 2))
+    
+    return new Promise(
+      (res, rej) => {
+        this.connection.put(
+          params,
+          (err, data) => {
+            console.log('err data', err, data)
+            if (err) {
+              return rej(err)
+            }
+            res(args.data)
+          }
+        )
+      }
+    )
   }
 
   public remove(args: IRemoveArgs): Promise<number> {
@@ -179,39 +174,12 @@ export class Connector implements DataConnector{
       newParams.Limit = 1000
     }
 
-    console.log('params', params)
-
-    return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
-      (res, rej) => {
-        if (isQuery) {
-          this.connection.query(
-            newParams,
-            (err, data) => {
-              if (err) {
-                return rej(err)
-              }
-              res(data)
-            }
-          )
-        } else {
-          this.connection.scan(
-            newParams,
-            (err, data) => {
-              if (err) {
-                return rej(err)
-              }
-              res(data)
-            }
-          )
-        }
-        
-      }
-    ).then(
+    return this.requestQueryOrScan(params, isQuery).then(
       (data) => {
-        console.log('data.Items', data.Items)
         if (take === 0) {
           return data.Items || []
         }
+        
         if (data.Items) {
           taken = [
             ...taken,
@@ -226,6 +194,7 @@ export class Connector implements DataConnector{
         if (data.LastEvaluatedKey) {
           return this.takeEntriesRequest(params, take, isQuery, taken)
         }
+        
         return taken
       }
     )
@@ -238,32 +207,7 @@ export class Connector implements DataConnector{
     isQuery: boolean,
     skipped: number
   ): Promise<DynamoDB.DocumentClient.Key | undefined> {
-    return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
-      (res, rej) => {
-        if (isQuery) {
-          this.connection.query(
-            params,
-            (err, data) => {
-              if (err) {
-                return rej(err)
-              }
-              res(data)
-            }
-          )
-        } else {
-          this.connection.scan(
-            params,
-            (err, data) => {
-              if (err) {
-                return rej(err)
-              }
-              res(data)
-            }
-          )
-        }
-        
-      }
-    ).then(
+    return this.requestQueryOrScan(params, isQuery).then(
       (data) => {
         if (!data.Items) {
           return
@@ -282,7 +226,6 @@ export class Connector implements DataConnector{
             }
           }
         )
-        
         return allSkipped
           ? ExclusiveStartKey
           : this.skipEntriesRequest(params, skipTo, pks, isQuery, skipped)
@@ -307,7 +250,37 @@ export class Connector implements DataConnector{
       Limit: 1000
     }
     return this.skipEntriesRequest(newParams, skipTo, pks, isQuery, 0)
-    
+  }
+
+  private requestQueryOrScan(
+    params: DynamoDB.DocumentClient.ScanInput | DynamoDB.DocumentClient.QueryInput,
+    isQuery: boolean
+  ) {
+    return new Promise<DynamoDB.DocumentClient.ScanOutput | DynamoDB.DocumentClient.QueryOutput>(
+      (res, rej) => {
+        if (isQuery) {
+          this.connection.query(
+            params,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        } else {
+          this.connection.scan(
+            params,
+            (err, data) => {
+              if (err) {
+                return rej(err)
+              }
+              res(data)
+            }
+          )
+        }
+      }
+    )
   }
 
   private buildFieldsAttributes(fields: string[]): {
@@ -348,7 +321,6 @@ export class Connector implements DataConnector{
         }
       }
     ) || false
-    
   }
 
   private buildFilterExpressions(
