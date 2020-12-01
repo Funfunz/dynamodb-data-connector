@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "description": "dynamodb data connector for Funfunz",
   "main": "lib/index.js",
+  "engines": {
+    "node": ">=12.0.0"
+  },
   "scripts": {
     "jest": "DEBUG=funfunz:DynamoDBDataConnector jest --coverage",
     "test": "npm run jest",
