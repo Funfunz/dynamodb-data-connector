@@ -21,7 +21,9 @@ At the moment, the connector is using the local machine AWS credentials
   connectors: {
     [key: string]: { // user defined name for the connector
       type: '@funfunz/dynamodb-data-connector',
-      config: {}
+      config: {
+        region: 'eu-west-1'
+      }
     }
     ...
   }
