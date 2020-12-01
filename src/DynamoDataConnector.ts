@@ -9,8 +9,13 @@ import { getPKs } from './helpers'
 const debug = Debug('funfunz:DynamoDBDataConnector')
 debug('Hello')
 
+export type DynamoConfig = {
+  region?: string
+} | undefined
+
 export class Connector implements DataConnector{
   public connection: DynamoDB.DocumentClient
+  private config: DynamoConfig
   private funfunz: Funfunz
   private operatorMatcher = {
     _eq: '=',
@@ -30,9 +35,12 @@ export class Connector implements DataConnector{
     '_gte'
   ]
   
-  constructor(connector: IDataConnector, funfunz: Funfunz) {
+  constructor(connector: IDataConnector<DynamoConfig>, funfunz: Funfunz) {
     this.funfunz = funfunz
-    this.connection = new DynamoDB.DocumentClient()
+
+    this.config = connector.config
+
+    this.connection = new DynamoDB.DocumentClient(this.config)
   }
 
   public async query(args: IQueryArgs): Promise<Record<string, unknown>[] | number> {
@@ -127,7 +135,7 @@ export class Connector implements DataConnector{
                 if (err) {
                   return rej(err)
                 }
-                res(data.Attributes)
+                res(data.Attributes as DynamoDB.DocumentClient.AttributeMap)
               }
             )
           }
