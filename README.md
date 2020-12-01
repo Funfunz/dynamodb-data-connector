@@ -43,8 +43,8 @@ Refer to [@Funfunz/core](https://funfunz.github.io/funfunz/#/configuration/setti
 
 [node]: https://img.shields.io/node/v/@funfunz/dynamodb-data-connector
 
-[npm-badge]: https://img.shields.io/npm/v/@funfunz/core?color=brightgreen
-[npm]: https://www.npmjs.com/package/funfunz
+[npm-badge]: https://img.shields.io/npm/v/@funfunz/dynamodb-data-connector?color=brightgreen
+[npm]: https://www.npmjs.com/package/@funfunz/dynamodb-data-connector
 
 [prs-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg
 [prs]: http://makeapullrequest.com
