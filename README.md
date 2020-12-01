@@ -1,4 +1,4 @@
-# Funfunz S3 Data Connector
+# Funfunz DynamoDB Data Connector
 
 [![Discord][discord-badge]][discord]
 [![Build Status][actions-badge]][actions]
