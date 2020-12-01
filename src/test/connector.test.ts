@@ -22,7 +22,7 @@ jest.mock('@funfunz/core', () => {
 const connector = new Connector(
   {
     type: 'dynamodb',
-    config
+    config: config.connectors.mainDatabase.config
   },
   new Funfunz({
     config,

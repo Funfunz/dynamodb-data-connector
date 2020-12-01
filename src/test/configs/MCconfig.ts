@@ -2,7 +2,9 @@ const config = {
   connectors: {
     mainDatabase: {
       type: "@funfunz/dynamodb-data-connector",
-      config: {}
+      config: {
+        region: "eu-west-1"
+      }
     }
   }
 }

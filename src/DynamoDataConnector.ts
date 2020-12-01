@@ -10,8 +10,8 @@ const debug = Debug('funfunz:DynamoDBDataConnector')
 debug('Hello')
 
 export type DynamoConfig = {
-  region?: string
-} | undefined
+  region: string
+}
 
 export class Connector implements DataConnector{
   public connection: DynamoDB.DocumentClient
@@ -40,6 +40,7 @@ export class Connector implements DataConnector{
 
     this.config = connector.config
 
+    debug(this.config)
     this.connection = new DynamoDB.DocumentClient(this.config)
   }
 

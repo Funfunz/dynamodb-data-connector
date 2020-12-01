@@ -4,7 +4,7 @@
   "description": "dynamodb data connector for Funfunz",
   "main": "lib/index.js",
   "scripts": {
-    "jest": "jest --coverage",
+    "jest": "DEBUG=funfunz:DynamoDBDataConnector jest --coverage",
     "test": "npm run jest",
     "lint": "eslint src",
     "clean": "rm -rf lib && mkdir lib",
