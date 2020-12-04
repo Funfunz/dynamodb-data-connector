@@ -1,6 +1,6 @@
 {
   "name": "@funfunz/dynamodb-data-connector",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "dynamodb data connector for Funfunz",
   "main": "lib/index.js",
   "engines": {
