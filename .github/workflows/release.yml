@@ -53,7 +53,7 @@ jobs:
           exit -1
         fi
         git push --tags -f https://$GIT_USER:$GIT_TOKEN@github.com/$REPO_OWNER/$REPO_NAME.git
-        git push -u https://$GIT_USER:$GIT_TOKEN@github.com/$REPO_OWNER/$REPO_NAME.git main
+        git push -u https://$GIT_USER:$GIT_TOKEN@github.com/$REPO_OWNER/$REPO_NAME.git master
         npm install
         npm publish
       env:
