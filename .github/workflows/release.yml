@@ -5,7 +5,7 @@ on:
     types: 
       - closed
     branches:
-      - main
+      - master
 
 env:
   VERSION_PATCH: ${{ contains(github.event.pull_request.labels.*.name, 'patch') }}
